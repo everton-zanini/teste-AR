@@ -46,20 +46,133 @@
       cursor: pointer;
       box-shadow: 0 4px 10px rgba(0,0,0,0.5);
     }
+    #botao-foto {
+      position: fixed;
+      right: 16px;
+      bottom: 18px;
+      z-index: 5000;
+      padding: 12px 18px;
+      border: none;
+      border-radius: 999px;
+      font-size: 15px;
+      font-weight: bold;
+      background: #ffffff;
+      color: #222222;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+      cursor: pointer;
+      opacity: 0.92;
+    }
+    #botao-foto:active {
+      transform: scale(0.97);
+    }
+    #flash-captura {
+      position: fixed;
+      inset: 0;
+      background: white;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 7000;
+      transition: opacity 120ms linear;
+    }
+    #status-captura {
+      position: fixed;
+      left: 50%;
+      bottom: 78px;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.65);
+      color: #ffffff;
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      z-index: 6000;
+      opacity: 0;
+      transition: opacity 160ms linear;
+      pointer-events: none;
+    }
   </style>
 
   <script>
     // Agora o script espera o clique no botão para fazer a mágica
     window.addEventListener('load', function() {
       const botao = document.getElementById('botao-comecar');
+      const botaoFoto = document.getElementById('botao-foto');
       const telaInicial = document.getElementById('tela-inicial');
       const musica = document.getElementById('musica-fundo');
+      const flashCaptura = document.getElementById('flash-captura');
+      const statusCaptura = document.getElementById('status-captura');
+      const cenaAr = document.getElementById('cena-ar');
+
+      const mostrarStatus = function(mensagem) {
+        statusCaptura.textContent = mensagem;
+        statusCaptura.style.opacity = '1';
+        setTimeout(function() {
+          statusCaptura.style.opacity = '0';
+        }, 1500);
+      };
 
       // Garante loop continuo mesmo em navegadores com comportamento diferente
       musica.loop = true;
       musica.addEventListener('ended', function() {
         musica.currentTime = 0;
         musica.play();
+      });
+
+      botaoFoto.addEventListener('click', function() {
+        const video = document.getElementById('camera-fundo');
+
+        if (!video.srcObject || video.readyState < 2) {
+          mostrarStatus('Ative a camera primeiro.');
+          return;
+        }
+
+        const canvasAr = cenaAr && cenaAr.renderer && cenaAr.renderer.domElement
+          ? cenaAr.renderer.domElement
+          : (cenaAr ? cenaAr.canvas : null);
+
+        if (!cenaAr || !canvasAr) {
+          mostrarStatus('Cena AR ainda carregando.');
+          return;
+        }
+
+        const capturarEExportar = function() {
+          const largura = video.videoWidth || window.innerWidth;
+          const altura = video.videoHeight || window.innerHeight;
+          const quadro = document.createElement('canvas');
+          quadro.width = largura;
+          quadro.height = altura;
+
+          const ctx = quadro.getContext('2d');
+          ctx.drawImage(video, 0, 0, largura, altura);
+          ctx.drawImage(canvasAr, 0, 0, largura, altura);
+
+          flashCaptura.style.opacity = '0.88';
+          setTimeout(function() {
+            flashCaptura.style.opacity = '0';
+          }, 100);
+
+          const imagem = quadro.toDataURL('image/jpeg', 0.92);
+          const nomeArquivo = 'arraia-ar-' + Date.now() + '.jpg';
+          const link = document.createElement('a');
+          link.href = imagem;
+          link.download = nomeArquivo;
+
+          if (typeof link.download === 'string') {
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            mostrarStatus('Foto salva no dispositivo.');
+          } else {
+            window.open(imagem, '_blank');
+            mostrarStatus('Foto aberta em nova aba.');
+          }
+        };
+
+        // Forca um render do frame atual antes da leitura do canvas WebGL.
+        if (cenaAr.renderer && cenaAr.object3D && cenaAr.camera) {
+          cenaAr.renderer.render(cenaAr.object3D, cenaAr.camera);
+        }
+
+        requestAnimationFrame(capturarEExportar);
       });
 
       botao.addEventListener('click', function() {
@@ -211,8 +324,12 @@
     <button id="botao-comecar">Entrar na Festa</button>
   </div>
 
+  <button id="botao-foto" type="button">Tirar Foto</button>
+  <div id="status-captura"></div>
+  <div id="flash-captura"></div>
+
   <video id="camera-fundo" autoplay playsinline></video>
-  <a-scene renderer="alpha: true" gerador-de-baloes gerador-de-fogos vr-mode-ui="enabled: false">
+  <a-scene id="cena-ar" renderer="alpha: true; preserveDrawingBuffer: true" gerador-de-baloes gerador-de-fogos vr-mode-ui="enabled: false">
     <a-entity light="type: ambient; color: #FFF3D6; intensity: 0.9"></a-entity>
     <a-entity light="type: directional; color: #FFFFFF; intensity: 0.75" position="-1 2 1"></a-entity>
     <a-entity camera look-controls></a-entity>

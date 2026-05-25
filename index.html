@@ -147,6 +147,7 @@
       const LIMITE_GRAVACAO_SEGUNDOS = 15;
 
       let streamCameraAtual = null;
+      let streamMicrofoneAtual = null;
       let mediaRecorder = null;
       let fluxoGravacao = null;
       let pedacoVideo = [];
@@ -190,6 +191,15 @@
         }
 
         contadorGravacao.style.opacity = '0';
+      };
+
+      const encerrarMicrofoneAtual = function() {
+        if (streamMicrofoneAtual) {
+          streamMicrofoneAtual.getTracks().forEach(function(track) {
+            track.stop();
+          });
+          streamMicrofoneAtual = null;
+        }
       };
 
       const renderizarQuadroGravacao = function() {
@@ -342,7 +352,7 @@
         requestAnimationFrame(capturarEExportar);
       });
 
-      botaoVideo.addEventListener('click', function() {
+      botaoVideo.addEventListener('click', async function() {
         const video = document.getElementById('camera-fundo');
 
         if (mediaRecorder && mediaRecorder.state === 'recording') {
@@ -375,8 +385,29 @@
         canvasGravacao.width = largura;
         canvasGravacao.height = altura;
 
+        let streamMicrofoneTemporario = null;
+        try {
+          streamMicrofoneTemporario = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true
+            }
+          });
+          streamMicrofoneAtual = streamMicrofoneTemporario;
+        } catch (erroMic) {
+          console.warn('Microfone nao autorizado ou indisponivel:', erroMic);
+          mostrarStatus('Microfone negado. Gravando sem audio.');
+        }
+
         pedacoVideo = [];
         fluxoGravacao = canvasGravacao.captureStream(30);
+
+        if (streamMicrofoneAtual) {
+          streamMicrofoneAtual.getAudioTracks().forEach(function(track) {
+            fluxoGravacao.addTrack(track);
+          });
+        }
 
         const tipoMime = tipoMimeSuportado();
         try {
@@ -386,6 +417,7 @@
         } catch (erro) {
           console.error('Erro ao iniciar MediaRecorder:', erro);
           mostrarStatus('Nao foi possivel iniciar a gravacao.');
+          encerrarMicrofoneAtual();
           return;
         }
 
@@ -403,6 +435,8 @@
               track.stop();
             });
           }
+
+          encerrarMicrofoneAtual();
 
           if (!blob || blob.size === 0) {
             mostrarStatus('Falha ao gerar o video.');
@@ -433,7 +467,7 @@
         mediaRecorder.start(250);
         botaoVideo.classList.add('gravando');
         botaoVideo.textContent = 'Parar Gravacao';
-        mostrarStatus('Gravando video...');
+        mostrarStatus(streamMicrofoneAtual ? 'Gravando video com microfone...' : 'Gravando video...');
         iniciarContadorGravacao();
 
         timeoutAutoPararId = setTimeout(function() {
@@ -452,9 +486,10 @@
       });
 
       botao.addEventListener('click', function() {
-        // 1. Toca a música (em loop contínuo)
-        musica.play();
-        
+        // 1. Mantem a musica de fundo parada para usar o audio ambiente do microfone.
+        musica.pause();
+        musica.currentTime = 0;
+
         // 2. Esconde a tela inicial
         telaInicial.style.display = 'none';
 
@@ -477,6 +512,8 @@
             track.stop();
           });
         }
+
+        encerrarMicrofoneAtual();
 
         if (mediaRecorder && mediaRecorder.state === 'recording') {
           mediaRecorder.stop();
